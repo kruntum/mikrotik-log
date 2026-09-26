@@ -100,9 +100,9 @@ sudo ufw allow 3301/tcp
 เชื่อมต่อ Winbox หรือ Terminal ของ MikroTik แล้วรันคำสั่ง:
 
 ```routeros
-# 1. เพิ่ม Remote Action ชี้ไปยัง Docker Server (ชื่อ action ต้องเป็นตัวอักษรและตัวเลขเท่านั้น)
+# 1. เพิ่ม Remote Action ชี้ไปยัง Docker Server (กำหนด format เป็น syslog สำหรับ RouterOS v7)
 /system logging action
-add name=alloy target=remote remote=<SERVER_IP> remote-port=514
+add name=alloy target=remote remote=<SERVER_IP> remote-port=514 remote-log-format=syslog syslog-time-format=bsd-syslog
 
 # 2. เลือกหัวข้อ Log ที่ต้องการส่งเข้า Alloy / Loki
 /system logging
