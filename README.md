@@ -1,110 +1,109 @@
-# MikroTik Syslog Stack (Grafana Alloy + Loki + PostgreSQL + Grafana)
+# 📘 คู่มือการใช้งานระบบจัดเก็บและค้นหา MikroTik Log (ฉบับปฏิบัติการสำหรับพนักงานและผู้ดูแลระบบ)
 
-ระบบจัดเก็บและค้นหา Syslog จาก MikroTik RouterOS โดยอัตโนมัติแบบครบวงจร
-
----
-
-## 🏗️ สถาปัตยกรรมระบบ
-- **MikroTik RouterOS**: ส่ง Syslog ออกมาผ่าน UDP พอร์ต `514`
-- **Grafana Alloy**: ตัวรับ Syslog (Syslog Receiver) แปลงรูปแบบ RFC3164 และส่งต่อให้ Loki
-- **Grafana Loki**: ตัวจัดเก็บ Log ประสิทธิภาพสูง บีบอัดข้อมูล ค้นหาเร็ว กำหนด Retention ไว้ 90 วัน
-- **PostgreSQL**: ฐานข้อมูลหลักสำหรับ Grafana (แทนที่ SQLite) เพื่อความเสถียรและรองรับการขยายตัว
-- **Grafana**: Web UI Dashboard และค้นหา Logs (พอร์ต `3301`)
+ระบบรวมศูนย์และวิเคราะห์ข้อมูล Log จาก MikroTik RouterOS แบบอัตโนมัติ โดยใช้ **Grafana Alloy + Loki + PostgreSQL + Grafana** ออกแบบมาเพื่อให้สอดคล้องกับการเก็บรักษาข้อมูลจราจรทางคอมพิวเตอร์ (Log 90 วัน) และง่ายต่อการสืบค้นข้อมูลสำหรับฝ่าย IT
 
 ---
 
-## ⚙️ ข้อกำหนดก่อนเริ่มติดตั้ง (Linux Server Prerequisites)
-
-### การเตรียมสิทธิ์ผู้ใช้ (Permission Setup)
-หากใช้ User ทั่วไป (เช่น `tummy` บน Debian / Ubuntu) แล้วพบข้อผิดพลาด:
-- `permission denied while trying to connect to the docker API`
-- `user is not in the sudoers file`
-
-ให้ทำการตั้งค่าสิทธิ์ผ่าน user `root` ดังนี้:
-
-1. **สลับไปเป็น root:**
-   ```bash
-   su -
-   ```
-2. **เพิ่ม User เข้ากลุ่ม `sudo` และ `docker`:**
-   ```bash
-   usermod -aG sudo,docker <username>
-   ```
-   *(ตัวอย่าง: `usermod -aG sudo,docker tummy`)*
-
-3. **สลับกลับมาใช้งาน user เดิม หรือโหลดสิทธิ์ใหม่:**
-   ```bash
-   newgrp docker
-   ```
-   *หรือออกจากระบบแล้ว SSH เข้ามาใหม่ เพื่อให้สิทธิ์มีผลสมบูรณ์*
+## 📑 สารบัญ
+1. [สถาปัตยกรรมและการทำงานของระบบ](#1-สถาปัตยกรรมและการทำงานของระบบ)
+2. [ข้อมูลการเชื่อมต่อและพอร์ตที่ใช้งาน](#2-ข้อมูลการเชื่อมต่อและพอร์ตที่ใช้งาน)
+3. [ขั้นตอนการติดตั้งระบบ (สำหรับผู้ดูแลเซิร์ฟเวอร์)](#3-ขั้นตอนการติดตั้งระบบ-สำหรับผู้ดูแลเซิร์ฟเวอร์)
+4. [การตั้งค่าบน MikroTik RouterOS](#4-การตั้งค่าบน-mikrotik-routeros)
+5. [คู่มือการใช้งาน Grafana สำหรับพนักงาน (ค้นหา Log)](#5-คู่มือการใช้งาน-grafana-สำหรับพนักงาน-ค้นหา-log)
+6. [สูตรการค้นหา Log ยอดนิยม (LogQL Cheat Sheet)](#6-สูตรการค้นหา-log-ยอดนิยม-logql-cheat-sheet)
+7. [การดูแลรักษาและการสำรองข้อมูล (Maintenance)](#7-การดูแลรักษาและการสำรองข้อมูล-maintenance)
+8. [การแก้ปัญหาที่พบบ่อย (Troubleshooting)](#8-การแก้ปัญหาที่พบบ่อย-troubleshooting)
 
 ---
 
-## 🚀 ขั้นตอนการติดตั้งและเริ่มใช้งาน
+## 1. สถาปัตยกรรมและการทำงานของระบบ
 
-1. **Clone โปรเจกต์ลงมาที่เครื่องเซิร์ฟเวอร์:**
-   ```bash
-   git clone https://github.com/kruntum/mikrotik-log.git
-   cd mikrotik-log
-   ```
-
-2. **สร้างไฟล์ `.env` สำหรับตั้งค่ารหัสผ่านและความปลอดภัย:**
-   คัดลอกไฟล์จากเทมเพลต:
-   ```bash
-   cp .env.example .env
-   ```
-   จากนั้นเปิดแก้ไขรหัสผ่านใน `.env` (ไฟล์นี้จะไม่ถูกอัปโหลดขึ้น Git):
-   ```bash
-   nano .env
-   ```
-   - กำหนดค่า `GF_SECURITY_ADMIN_PASSWORD` (รหัสผ่านเข้า Grafana)
-   - กำหนดค่า `POSTGRES_PASSWORD` (รหัสผ่านฐานข้อมูล PostgreSQL)
-
-3. **สั่งรันคอนเทนเนอร์:**
-   ```bash
-   docker compose up -d
-   ```
-   *(หากยังไม่ได้เพิ่มสิทธิ์ docker ให้ใช้ `sudo docker compose up -d`)*
-
-4. **ตรวจสอบสถานะคอนเทนเนอร์:**
-   ```bash
-   docker compose ps
-   ```
-
----
-
-## 🌐 การเข้าใช้งาน Web UI
-
-- **URL:** `http://<SERVER_IP>:3301`
-- **Username:** `admin`
-- **Password:** ตามที่กำหนดไว้ใน `docker-compose.yml`
-- **Datasource:** เชื่อมต่อ Loki ให้อัตโนมัติ สามารถเข้าเมนู **Explore** เพื่อค้นหา Log ได้ทันที
-
----
-
-## 🛡️ การเปิด Firewall บนเครื่อง Linux Server
-
-ตรวจสอบว่าเครื่องเซิร์ฟเวอร์เปิดรับพอร์ตที่จำเป็น:
-```bash
-# พอร์ตรับ Syslog จาก MikroTik (UDP)
-sudo ufw allow 514/udp
-
-# พอร์ตเข้าใช้งานหน้าเว็บ Grafana (TCP)
-sudo ufw allow 3301/tcp
+```
+[ MikroTik RouterOS ] 
+        │ (UDP 514 / RFC 3164 Syslog)
+        ▼
+[ Grafana Alloy ] (Syslog Collector / Buffer)
+        │ (HTTP Push API)
+        ▼
+[ Grafana Loki ] ── (เก็บบน Disk บีบอัดสูง / TSDB Index / Retention 90 วัน)
+        ▲
+        │
+[ Grafana Web UI ] ◄───► [ PostgreSQL 16 ] (เก็บ User, Dashboards, Alerts)
+        ▲
+        │
+[ พนักงาน / ผู้ดูแลระบบ ] (เปิดผ่าน Browser พอร์ต 3301)
 ```
 
 ---
 
-## 📡 การตั้งค่าบน MikroTik RouterOS
+## 2. ข้อมูลการเชื่อมต่อและพอร์ตที่ใช้งาน
 
-เชื่อมต่อ Winbox หรือ Terminal ของ MikroTik แล้วรันคำสั่ง:
+| บริการ | โปรโตคอล / พอร์ต | ปลายทาง / วัตถุประสงค์ |
+|---|---|---|
+| **Grafana Web UI** | TCP `3301` | หน้า Dashboard ค้นหา Log สำหรับพนักงาน |
+| **Syslog Receiver (Alloy)** | UDP `514` | รับข้อมูล Log จากเราเตอร์ MikroTik |
+| **Grafana Loki** | TCP `3100` | ฐานข้อมูล Log ภายใน (เข้าถึงเฉพาะ localhost) |
+| **PostgreSQL** | TCP `5432` | ฐานข้อมูลการตั้งค่า Grafana ภายใน Docker Network |
+
+* **URL เข้าใช้งาน:** `http://<SERVER_IP>:3301`
+* **Username เริ่มต้น:** `admin`
+* **Password:** กำหนดไว้ในไฟล์ `.env` ของเซิร์ฟเวอร์
+
+---
+
+## 3. ขั้นตอนการติดตั้งระบบ (สำหรับผู้ดูแลเซิร์ฟเวอร์)
+
+### 3.1 ข้อกำหนดและการเตรียมสิทธิ์ผู้ใช้ Linux (Debian / Ubuntu)
+หากใช้ User ทั่วไป (เช่น `tummy`) แล้วติดปัญหาเรื่องสิทธิ์:
+```bash
+# 1. สลับไปเป็น root
+su -
+
+# 2. เพิ่มสิทธิ์ให้ user เข้ากลุ่ม sudo และ docker
+usermod -aG sudo,docker <username>
+
+# 3. โหลดสิทธิ์ใหม่
+newgrp docker
+```
+
+### 3.2 การติดตั้งและเปิดใช้งานคอนเทนเนอร์
+```bash
+# 1. Clone โปรเจกต์ลงมา
+git clone https://github.com/kruntum/mikrotik-log.git
+cd mikrotik-log
+
+# 2. กรณีสลับ user แล้วติดเรื่องสิทธิ์ Git
+git config --global --add safe.directory $(pwd)
+
+# 3. สร้างไฟล์รหัสผ่านความปลอดภัย (.env)
+cp .env.example .env
+nano .env   # แก้ไขรหัสผ่าน GF_SECURITY_ADMIN_PASSWORD และ POSTGRES_PASSWORD
+
+# 4. สั่งรันระบบทั้งหมด
+docker compose up -d
+
+# 5. ตรวจสอบสถานะการทำงาน (ต้องขึ้น running ครบทั้ง 4 ตัว)
+docker compose ps
+```
+
+### 3.3 การเปิด Firewall บนเซิร์ฟเวอร์
+```bash
+sudo ufw allow 514/udp    # พอร์ตรับ Syslog จาก MikroTik
+sudo ufw allow 3301/tcp   # พอร์ตเข้าหน้าเว็บ Grafana
+```
+
+---
+
+## 4. การตั้งค่าบน MikroTik RouterOS
+
+ล็อกอินเข้า Winbox หรือ SSH ของเราเตอร์ MikroTik แล้วเปิด **Terminal** รันคำสั่งด้านล่างนี้ (แทน `<SERVER_IP>` ด้วย IP เครื่องเซิร์ฟเวอร์ เช่น `10.10.10.254`):
 
 ```routeros
-# 1. เพิ่ม Remote Action ชี้ไปยัง Docker Server (กำหนด format เป็น syslog สำหรับ RouterOS v7)
+# 1. สร้าง Action ส่ง Syslog ไปยังเซิร์ฟเวอร์ (สำคัญ: ต้องใช้ remote-log-format=syslog สำหรับ RouterOS v7)
 /system logging action
 add name=alloy target=remote remote=<SERVER_IP> remote-port=514 remote-log-format=syslog syslog-time-format=bsd-syslog
 
-# 2. เลือกหัวข้อ Log ที่ต้องการส่งเข้า Alloy / Loki
+# 2. กำหนดประเภท Logs สำคัญที่ต้องการส่งเข้าศูนย์เก็บ
 /system logging
 add action=alloy topics=info
 add action=alloy topics=warning
@@ -114,22 +113,83 @@ add action=alloy topics=firewall
 add action=alloy topics=dhcp
 add action=alloy topics=account
 ```
-*(แทนค่า `<SERVER_IP>` ด้วย IP เครื่อง Docker เช่น `10.10.10.254`)*
+
+### คำสั่งทดสอบการส่ง Log จาก MikroTik:
+```routeros
+/log info "=== TEST SYSLOG CONNECTION TO ALLOY ==="
+```
 
 ---
 
-## 🔍 การตรวจสอบ Logs เมื่อพบปัญหา (Troubleshooting)
+## 5. คู่มือการใช้งาน Grafana สำหรับพนักงาน (ค้นหา Log)
 
+### 5.1 การเข้าสู่ระบบ
+1. เปิดเบราว์เซอร์ไปที่: `http://<SERVER_IP>:3301`
+2. กรอก **Username** และ **Password** ที่ได้รับมอบหมาย
+3. เมนูด้านซ้ายคลิกที่ไอคอน **Explore** (รูปเข็มทิศ 🧭) หรือไปที่ `http://<SERVER_IP>:3301/explore`
+
+### 5.2 วิธีการค้นหา
+1. ที่มุมซ้ายบน ตรวจสอบว่า Data source เลือกเป็น **`Loki`**
+2. ที่มุมขวาบนของช่องค้นหา ให้คลิกสลับปุ่มไปที่โหมด **`Code`**
+3. พิมพ์คำสั่งสืบค้น (LogQL) เช่น `{job="mikrotik"}`
+4. กำหนดช่วงเวลาที่ต้องการค้นหาที่มุมบนขวา (เช่น `Last 1 hour`, `Today`, หรือระบุวันเวลาเจาะจง)
+5. กดปุ่มสีน้ำเงิน **Run query** (หรือกด `Shift + Enter`)
+
+### 5.3 การเปิดดู Log สดแบบเรียลไทม์ (Live Streaming)
+* คลิกที่ปุ่ม **"Live"** (มุมขวาบน) หน้าจอจะแสดง Log ล่าสุดที่อุปกรณ์กำลังส่งเข้ามาอย่างต่อเนื่องโดยไม่ต้องกดรีเฟรช
+
+---
+
+## 6. สูตรการค้นหา Log ยอดนิยม (LogQL Cheat Sheet)
+
+พนักงานสามารถคัดลอกคำสั่งด้านล่างนี้ไปปรับใช้ในช่อง Query ได้ทันที:
+
+| วัตถุประสงค์ในการค้นหา | คำสั่ง LogQL ที่ใช้งาน |
+|---|---|
+| **ดู Log ทั้งหมดของ MikroTik** | `{job="mikrotik"}` |
+| **ค้นหาตาม IP ภายใน/ภายนอก** | `{job="mikrotik"} \|= "192.168.1.150"` |
+| **ค้นหาตาม MAC Address** | `{job="mikrotik"} \|= "00:11:22:AA:BB:CC"` |
+| **ตรวจสอบการแจก IP ของ DHCP** | `{job="mikrotik"} \|= "dhcp"` |
+| **ดู Log ที่ถูก Firewall Drop / บล็อก** | `{job="mikrotik"} \|= "firewall" \|= "drop"` |
+| **ดู Log การ Forward ข้อมูลผ่านเราเตอร์** | `{job="mikrotik"} \|= "forward:"` |
+| **ตรวจจับการพยายาม Brute-Force Login ล้มเหลว** | `{job="mikrotik"} \|= "login failure"` |
+| **ดูเฉพาะเหตุการณ์แจ้งเตือนระดับ Warning หรือ Error** | `{job="mikrotik"} \|~ "warning\|error\|critical"` |
+| **ค้นหาแบบตัดคำที่ไม่ต้องการออก (เช่น ไม่เอา DNS)** | `{job="mikrotik"} \|= "firewall" != "dns"` |
+
+---
+
+## 7. การดูแลรักษาและการสำรองข้อมูล (Maintenance)
+
+### 7.1 นโยบายการเก็บรักษาข้อมูล (Log Retention)
+* ระบบตั้งค่าไว้ที่ **90 วัน (2,160 ชั่วโมง)** ตามข้อกำหนดทางกฎหมาย เมื่อพ้นระยะเวลาดังกล่าว Loki Compactor จะทำการลบข้อมูลเก่าทิ้งโดยอัตโนมัติ เพื่อประหยัดพื้นที่ดิสก์
+
+### 7.2 คำสั่งตรวจสอบสถานะและการทำงาน
 ```bash
-# ดู log ของ Grafana Alloy (ตัวรับ Syslog)
-docker compose logs -f alloy
+# ตรวจสอบว่าคอนเทนเนอร์ทำงานปกติทุกตัว
+docker compose ps
 
-# ดู log ของ Loki (ฐานข้อมูล Log)
-docker compose logs -f loki
+# ดู Log รวมของทั้งระบบ
+docker compose logs -f
 
-# ดู log ของ Grafana
-docker compose logs -f grafana
-
-# ดู log ของ PostgreSQL
-docker compose logs -f postgres
+# ดู Log แยกตามแต่ละเซอร์วิส
+docker compose logs -f alloy      # ตัวรับ Syslog
+docker compose logs -f loki       # ฐานข้อมูล Log
+docker compose logs -f grafana    # หน้าเว็บ
+docker compose logs -f postgres   # ฐานข้อมูล Grafana
 ```
+
+### 7.3 การสำรองข้อมูล (Backup)
+* **ฐานข้อมูล Grafana (User, Dashboard):** สำรองข้อมูล Volume `postgres-data` หรือใช้คำสั่ง `docker exec -t postgres pg_dump -U grafana grafana > backup_grafana.sql`
+* **ข้อมูล Log Chunks:** สำรองข้อมูล Volume `loki-data`
+
+---
+
+## 8. การแก้ปัญหาที่พบบ่อย (Troubleshooting)
+
+| อาการที่พบ | สาเหตุ | วิธีแก้ไข |
+|---|---|---|
+| **Alloy แจ้ง `invalid or unsupported framing, first byte: 'f'`** | MikroTik ส่ง Log เป็น raw text ไม่ตรงมาตรฐาน RFC 3164 | รันคำสั่งบน MikroTik: `/system logging action set [find name=alloy] remote-log-format=syslog syslog-time-format=bsd-syslog` |
+| **Grafana ค้างสถานะ `restarting` (pq: password authentication failed)** | PostgreSQL จำรหัสผ่านเก่าจากตอนสร้างครั้งแรก | รัน: `docker compose down` ตามด้วย `docker volume rm mikrotik-log_postgres-data` แล้วรัน `docker compose up -d` ใหม่ |
+| **Loki ค้างสถานะ `restarting` (delete_request_store required)** | ไฟล์ config ขาดตัวแปร retention compactor | เพิ่ม `delete_request_store: filesystem` ใต้หัวข้อ `compactor` ใน `loki/config.yml` แล้ว restart |
+| **Git ฟ้อง `detected dubious ownership`** | รัน git ด้วย user ที่ไม่ใช่เจ้าของโฟลเดอร์เดิม | รัน: `git config --global --add safe.directory $(pwd)` |
+| **ไม่พบ Log ใน Grafana เลย** | Firewall บล็อกพอร์ต UDP หรือคำสั่งค้นหาผิด | 1. ตรวจสอบ firewall `sudo ufw allow 514/udp`<br>2. ในหน้า Explore ต้องใช้โหมด **Code** และใส่ `{job="mikrotik"}` |
