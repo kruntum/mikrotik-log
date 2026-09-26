@@ -100,19 +100,19 @@ sudo ufw allow 3301/tcp
 เชื่อมต่อ Winbox หรือ Terminal ของ MikroTik แล้วรันคำสั่ง:
 
 ```routeros
-# 1. เพิ่ม Remote Action ชี้ไปยัง Docker Server
+# 1. เพิ่ม Remote Action ชี้ไปยัง Docker Server (ชื่อ action ต้องเป็นตัวอักษรและตัวเลขเท่านั้น)
 /system logging action
-add name=alloy-syslog remote=<SERVER_IP> remote-port=514 src-address=0.0.0.0 target=remote bsd-syslog=yes syslog-facility=daemon
+add name=alloy target=remote remote=<SERVER_IP> remote-port=514
 
 # 2. เลือกหัวข้อ Log ที่ต้องการส่งเข้า Alloy / Loki
 /system logging
-add action=alloy-syslog topics=info
-add action=alloy-syslog topics=warning
-add action=alloy-syslog topics=error
-add action=alloy-syslog topics=critical
-add action=alloy-syslog topics=firewall
-add action=alloy-syslog topics=dhcp
-add action=alloy-syslog topics=account
+add action=alloy topics=info
+add action=alloy topics=warning
+add action=alloy topics=error
+add action=alloy topics=critical
+add action=alloy topics=firewall
+add action=alloy topics=dhcp
+add action=alloy topics=account
 ```
 *(แทนค่า `<SERVER_IP>` ด้วย IP เครื่อง Docker เช่น `10.10.10.254`)*
 
