@@ -1,0 +1,21 @@
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+loki.source.syslog "mikrotik" {
+  listener {
+    address       = "0.0.0.0:1514"
+    protocol      = "udp"
+    syslog_format = "rfc3164"
+
+    labels = {
+      job    = "mikrotik",
+      site   = "office",
+      source = "router",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
