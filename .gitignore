@@ -1,6 +1,9 @@
-# Data directories
+# Data & Backup directories
 data/
+backups/
 *.log
+*.sql.gz
+*.tar.gz
 
 # Environment variables & secrets
 .env

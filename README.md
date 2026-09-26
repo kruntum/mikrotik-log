@@ -178,9 +178,38 @@ docker compose logs -f grafana    # หน้าเว็บ
 docker compose logs -f postgres   # ฐานข้อมูล Grafana
 ```
 
-### 7.3 การสำรองข้อมูล (Backup)
-* **ฐานข้อมูล Grafana (User, Dashboard):** สำรองข้อมูล Volume `postgres-data` หรือใช้คำสั่ง `docker exec -t postgres pg_dump -U grafana grafana > backup_grafana.sql`
-* **ข้อมูล Log Chunks:** สำรองข้อมูล Volume `loki-data`
+### 7.3 ระบบสำรองข้อมูลอัตโนมัติ (Automated Backup & Restore)
+
+ระบบมีสคริปต์สำหรับการสำรองและกู้คืนข้อมูลแบบพร้อมใช้งานทันทีอยู่ในโฟลเดอร์ `scripts/`:
+
+#### 1) การสั่ง Backup ทันที (Manual):
+```bash
+# ให้สิทธิ์รันสคริปต์
+chmod +x scripts/*.sh
+
+# สั่งสำรองข้อมูลทันที
+./scripts/backup.sh
+```
+*สคริปต์จะทำการสำรองทั้ง PostgreSQL (Users, Dashboards), Loki Log Chunks, และไฟล์การตั้งค่า ลงในโฟลเดอร์ `backups/` และจะลบไฟล์สำรองที่เก่าเกิน 30 วันให้อัตโนมัติ*
+
+#### 2) การตั้งเวลาสำรองข้อมูลอัตโนมัติทุกวัน (Cron Job):
+เปิด crontab:
+```bash
+crontab -e
+```
+เพิ่มบรรทัดนี้ลงไปด้านล่างสุด เพื่อให้สำรองข้อมูลอัตโนมัติทุกวันเวลา 02:00 น.:
+```cron
+0 2 * * * /home/tummy/mikrotik-log/scripts/backup.sh >> /var/log/mikrotik-backup.log 2>&1
+```
+
+#### 3) การกู้คืนข้อมูล (Disaster Recovery / Restore):
+```bash
+# กู้คืนเฉพาะฐานข้อมูล Grafana
+./scripts/restore.sh backups/postgres_grafana_YYYYMMDD_HHMMSS.sql.gz
+
+# หรือกู้คืนทั้ง Grafana และ Loki Logs
+./scripts/restore.sh backups/postgres_grafana_YYYYMMDD_HHMMSS.sql.gz backups/loki_data_YYYYMMDD_HHMMSS.tar.gz
+```
 
 ---
 
