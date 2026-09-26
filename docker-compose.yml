@@ -21,10 +21,10 @@ services:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy-data:/var/lib/alloy
     ports:
-      - "514:1514/udp"
+      - "${SYSLOG_UDP_PORT:-514}:1514/udp"
       # เปิดบรรทัดนี้เฉพาะเมื่อจะใช้ Syslog แบบ TCP
       # - "514:1514/tcp"
-      - "127.0.0.1:12345:12345"
+      - "127.0.0.1:${ALLOY_HTTP_PORT:-12345}:12345"
     depends_on:
       - loki
     networks:
@@ -35,9 +35,9 @@ services:
     container_name: postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: grafana
-      POSTGRES_USER: grafana
-      POSTGRES_PASSWORD: "grafana_secure_password"
+      POSTGRES_DB: ${POSTGRES_DB:-grafana}
+      POSTGRES_USER: ${POSTGRES_USER:-grafana}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -48,22 +48,22 @@ services:
     container_name: grafana
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: "เปลี่ยนรหัสผ่านให้ยาวและเดายาก"
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/"
       # ตั้งค่าเชื่อมต่อ PostgreSQL สำหรับ Grafana
       GF_DATABASE_TYPE: postgres
       GF_DATABASE_HOST: postgres:5432
-      GF_DATABASE_NAME: grafana
-      GF_DATABASE_USER: grafana
-      GF_DATABASE_PASSWORD: "grafana_secure_password"
+      GF_DATABASE_NAME: ${POSTGRES_DB:-grafana}
+      GF_DATABASE_USER: ${POSTGRES_USER:-grafana}
+      GF_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
       GF_DATABASE_SSL_MODE: disable
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "3301:3000"
+      - "${GRAFANA_PORT:-3301}:3000"
     depends_on:
       - loki
       - postgres

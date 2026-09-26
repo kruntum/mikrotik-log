@@ -48,10 +48,17 @@
    cd mikrotik-log
    ```
 
-2. **(แนะนำ) แก้ไขรหัสผ่านก่อนใช้งานจริง:**
-   แก้ไขรหัสผ่านในไฟล์ `docker-compose.yml`:
-   - `GF_SECURITY_ADMIN_PASSWORD`: รหัสผ่านเข้า Grafana
-   - `POSTGRES_PASSWORD`: รหัสผ่านฐานข้อมูล PostgreSQL
+2. **สร้างไฟล์ `.env` สำหรับตั้งค่ารหัสผ่านและความปลอดภัย:**
+   คัดลอกไฟล์จากเทมเพลต:
+   ```bash
+   cp .env.example .env
+   ```
+   จากนั้นเปิดแก้ไขรหัสผ่านใน `.env` (ไฟล์นี้จะไม่ถูกอัปโหลดขึ้น Git):
+   ```bash
+   nano .env
+   ```
+   - กำหนดค่า `GF_SECURITY_ADMIN_PASSWORD` (รหัสผ่านเข้า Grafana)
+   - กำหนดค่า `POSTGRES_PASSWORD` (รหัสผ่านฐานข้อมูล PostgreSQL)
 
 3. **สั่งรันคอนเทนเนอร์:**
    ```bash
