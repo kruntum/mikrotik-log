@@ -112,6 +112,7 @@ add action=alloy topics=critical
 add action=alloy topics=firewall
 add action=alloy topics=dhcp
 add action=alloy topics=account
+add action=alloy topics=dns
 ```
 
 ### คำสั่งทดสอบการส่ง Log จาก MikroTik:
@@ -138,6 +139,16 @@ add action=alloy topics=account
 ### 5.3 การเปิดดู Log สดแบบเรียลไทม์ (Live Streaming)
 * คลิกที่ปุ่ม **"Live"** (มุมขวาบน) หน้าจอจะแสดง Log ล่าสุดที่อุปกรณ์กำลังส่งเข้ามาอย่างต่อเนื่องโดยไม่ต้องกดรีเฟรช
 
+### 5.4 การเปิดดู Dashboard สรุปภาพรวม (MikroTik Traffic & Security Overview)
+ระบบได้สร้าง Dashboard สรุปภาพรวมแบบอัตโนมัติไว้ให้แล้ว:
+1. ไปที่เมนูด้านซ้าย **Dashboards** (รูปหน้าต่าง 4 ช่อง)
+2. คลิกเข้าไปที่โฟลเดอร์ **MikroTik** -> เลือก **MikroTik Traffic & Security Overview**
+3. ภายในแดชบอร์ดจะแสดง:
+   * **สถิติสรุป:** จำนวน Log รวม, การเรียกค้นหาเว็บ (DNS), ปริมาณ Web Traffic (80/443), รายการที่ถูกบล็อก
+   * **Top 10 Client IPs:** ตารางและกราฟจัดอันดับเครื่องผู้ใช้งานที่กิน Traffic สูงสุด
+   * **Top 10 Destination IPs:** ปลายทางภายนอกที่มีการเชื่อมต่อเข้าไปมากที่สุด
+   * **Web & Security Logs:** หน้าต่างแสดงการเรียกเว็บ (DNS) และการ Drop ของ Firewall แบบเรียลไทม์
+
 ---
 
 ## 6. สูตรการค้นหา Log ยอดนิยม (LogQL Cheat Sheet)
@@ -147,14 +158,40 @@ add action=alloy topics=account
 | วัตถุประสงค์ในการค้นหา | คำสั่ง LogQL ที่ใช้งาน |
 |---|---|
 | **ดู Log ทั้งหมดของ MikroTik** | `{job="mikrotik"}` |
-| **ค้นหาตาม IP ภายใน/ภายนอก** | `{job="mikrotik"} \|= "192.168.1.150"` |
-| **ค้นหาตาม MAC Address** | `{job="mikrotik"} \|= "00:11:22:AA:BB:CC"` |
+| **ค้นหาตาม IP ภายใน/ภายนอก** | `{job="mikrotik"} \|= "192.168.82.158"` |
+| **ค้นหาตาม MAC Address** | `{job="mikrotik"} \|= "6C:94:66:98:9A:72"` |
+| **ดูเครื่องใครเข้าเว็บไหนบ้าง (DNS)** | `{job="mikrotik"} \|= "dns"` |
 | **ตรวจสอบการแจก IP ของ DHCP** | `{job="mikrotik"} \|= "dhcp"` |
 | **ดู Log ที่ถูก Firewall Drop / บล็อก** | `{job="mikrotik"} \|= "firewall" \|= "drop"` |
 | **ดู Log การ Forward ข้อมูลผ่านเราเตอร์** | `{job="mikrotik"} \|= "forward:"` |
 | **ตรวจจับการพยายาม Brute-Force Login ล้มเหลว** | `{job="mikrotik"} \|= "login failure"` |
 | **ดูเฉพาะเหตุการณ์แจ้งเตือนระดับ Warning หรือ Error** | `{job="mikrotik"} \|~ "warning\|error\|critical"` |
 | **ค้นหาแบบตัดคำที่ไม่ต้องการออก (เช่น ไม่เอา DNS)** | `{job="mikrotik"} \|= "firewall" != "dns"` |
+
+---
+
+## 7. วิธีนำข้อมูลไปบล็อกการเข้าถึงที่ไม่จำเป็นบน MikroTik
+
+เมื่อตรวจพบ IP หรือเว็บไซต์ที่ไม่จำเป็น (เช่น เว็บพนัน, โซเชียลมีเดีย, วิดีโอสตรีมมิ่ง) สามารถนำมากำหนดกฎบล็อกบน MikroTik ได้ดังนี้:
+
+### 1) บล็อกด้วย Address-List (ระบุชื่อโดเมนแล้วให้ MikroTik จำ IP บล็อก)
+```routeros
+# เพิ่มโดเมนที่ไม่ต้องการเข้า Blacklist
+/ip firewall address-list
+add address=tiktok.com list=BLOCKED_SITES
+add address=www.tiktok.com list=BLOCKED_SITES
+
+# สร้าง Rule สั่ง Drop การเชื่อมต่อไปยัง Blacklist
+/ip firewall filter
+add action=drop chain=forward dst-address-list=BLOCKED_SITES comment="Block Unwanted Sites" log=yes log-prefix="[BLOCKED]"
+```
+
+### 2) บล็อกด้วย TLS Host (HTTPS SNI)
+สำหรับ RouterOS v7 สามารถบล็อกเว็บไซต์ HTTPS ผ่าน TLS Host ได้โดยตรง:
+```routeros
+/ip firewall filter
+add action=drop chain=forward protocol=tcp dst-port=443 tls-host="*tiktok*" comment="Block TikTok via TLS-Host" log=yes log-prefix="[BLOCKED-TLS]"
+```
 
 ---
 
